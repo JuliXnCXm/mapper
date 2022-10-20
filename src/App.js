@@ -6,17 +6,20 @@ import MapContext from './context/MapContext'
 
 function App() {
 
-  const {isLoading, data} = useContext(MapContext)
+  const {isLoading} = useContext(MapContext)
+
 
   return (
     <div>
-      {
-        isLoading ? <SpinnerLoader />
-        :
-        <Maps dataMap={data}/>
-      }
+      {isLoading ? (
+        <SpinnerLoader />
+      ) : (
+        <div className="mapperContainer">
+          <Maps />
+        </div>
+      )}
     </div>
-  )
+  );
 
 }
 

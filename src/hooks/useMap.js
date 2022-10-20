@@ -19,21 +19,31 @@ const useMap = () => {
         zoom: 10,
     });
 
+    const popup = new mapboxgl.Popup({
+        closeButton: false,
+        closeOnClick: false,
+    });
+
+
     useEffect(() => {
         if (map.current) return; // initialize map only once
             map.current = new mapboxgl.Map({
-            style: process.env.REACT_APP_MAP_STYLE_URI,
-            container: mapContainer.current,
-            center: [viewState.longitude, viewState.latitude],
-            zoom: viewState.zoom,
-        });
+                style:
+                    process.env.REACT_APP_MAP_STYLE_URI_BASE +
+                    process.env.REACT_APP_MAP_STYLE_ID_REAL_COV,
+                container: mapContainer.current,
+                center: [viewState.longitude, viewState.latitude],
+                zoom: viewState.zoom,
+            });
         map.current.addControl(
             new MapboxGeocoder({
                 accessToken: mapboxgl.accessToken,
                 mapboxgl: mapboxgl,
             })
         );
-
+        map.current.addControl(
+            new mapboxgl.FullscreenControl()
+        )
     });
 
     useEffect(() => {
@@ -54,41 +64,92 @@ const useMap = () => {
     }, [filteredData]);
 
     useEffect(() => {
-        map.current.on("load", () => {
+        map.current.on("style.load", () => {
             // Add an image to use as a custom marker
             if (data.length > 0) {
-            map.current.loadImage(marker2, (error, image) => {
-                if (error) throw error;
-                map.current.addImage("custom-marker", image, {
-                sdf: true,
-                });
-                // Add a GeoJSON source with 2 points
-                map.current.addSource("dataPoints", {
-                type: "geojson",
-                data: OSMGeoJSON(data),
-                });
+                    // Add a GeoJSON source with 2 points
+                    map.current.addSource("dataPoints", {
+                        type: "geojson",
+                        data: OSMGeoJSON(data),
+                    });
 
-                // Add a symbol layer
-                map.current.addLayer({
-                id: "points",
-                type: "symbol",
-                source: "dataPoints",
-                layout: {
-                    "icon-image": "custom-marker",
-                    "icon-size": 1,
-                    "text-field": ["get", "name"],
-                    "text-font": ["Open Sans Semibold", "Arial Unicode MS Bold"],
-                    "text-offset": [0, 1.25],
-                    "text-anchor": "top",
-                },
-                paint: {
-                    "icon-color": "#f78f8f",
-                },
-                });
-            });
+                    // Add a symbol layer
+                    map.current.addLayer({
+                        id: "points",
+                        type: "circle",
+                        source: "dataPoints",
+                        layout: {
+                            'visibility': 'visible',
+                        },
+                        'paint': {
+                            'circle-color': '#4264fb',
+                            'circle-radius': 6,
+                            'circle-stroke-width': 2,
+                            'circle-stroke-color': '#ffffff'
+                        }
+                    });
             }
         });
     });
+
+    useEffect(() => {
+        map.current.on('mouseenter', 'points', (e) => {
+            // Change the cursor style as a UI indicator.
+            map.current.getCanvas().style.cursor = 'pointer';
+
+            // Copy coordinates array.
+            const coordinates = [e.lngLat.lng , e.lngLat.lat];
+            const amenity = e.features[0].properties.amenity;
+            const name = e.features[0].properties.name;
+
+            // Ensure that if the map is zoomed out such that multiple
+            // copies of the feature are visible, the popup appears
+            // over the copy being pointed to.
+            while (Math.abs(e.lngLat.lng - coordinates[0]) > 180) {
+                coordinates[0] += e.lngLat.lng > coordinates[0] ? 360 : -360;
+            }
+
+            // Populate the popup and set its coordinates
+            // based on the feature found.
+            popup
+            .setLngLat(coordinates)
+            .setHTML(`
+            <div>
+                <h2>${amenity}</h2>
+                <h3>${name}</h3>
+            </div>`
+            )
+            .addTo(map.current);
+        });
+
+        map.current.on('mouseleave', 'points', () => {
+            map.current.getCanvas().style.cursor = '';
+            popup.remove();
+        });
+    })
+
+    const handleClickToggle = (e) => {
+        if (!map.current.getLayer("points")) {
+            return;
+        }
+        const clickedLayer = e.target.innerText;
+        e.preventDefault();
+        e.stopPropagation();
+
+        const visibility = map.current.getLayoutProperty(
+            clickedLayer,
+            "visibility"
+        );
+
+        // Toggle layer visibility by changing the layout object's visibility property.
+        if (visibility === "visible") {
+            map.current.setLayoutProperty(clickedLayer, "visibility", "none");
+            e.className = "";
+        } else {
+            e.className = "active";
+            map.current.setLayoutProperty(clickedLayer, "visibility", "visible");
+        }
+    }
 
     const OSMGeoJSON = (dataMap) => {
         return {
@@ -102,14 +163,24 @@ const useMap = () => {
         };
     };
 
+    const changeStyle = (layer) => {
+        const layerId = layer.target.id;
+        map.current.setStyle(
+            process.env.REACT_APP_MAP_STYLE_URI_BASE + layerId
+        );
+    }
+
     return {
         map,
         data,
+        handleClickToggle,
         setFilteredData,
         viewState,
         setViewState,
         mapContainer,
-        OSMGeoJSON
+        OSMGeoJSON,
+        changeStyle,
+        filteredData
     }
 };
 
